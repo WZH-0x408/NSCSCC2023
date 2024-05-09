@@ -1,0 +1,2 @@
+# NSCSCC2023
+A basic MIPS32 CPU core for NSCSCC2023
