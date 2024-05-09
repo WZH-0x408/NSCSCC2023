@@ -1,22 +1,28 @@
 module alu(
-  input  [11:0] alu_op,
+  input  [15:0] alu_op,
   input  [31:0] alu_src1,
   input  [31:0] alu_src2,
-  output [31:0] alu_result
+  output [31:0] alu_result,
+  output [31:0] alu_result2, //for storing higher 32 bits of mult.div
+  output overflow
 );
 
-wire op_add;   //加法操作
-wire op_sub;   //减法操作
-wire op_slt;   //有符号比较，小于置位
-wire op_sltu;  //无符号比较，小于置位
-wire op_and;   //按位与
-wire op_nor;   //按位或非
-wire op_or;    //按位或
-wire op_xor;   //按位异或
-wire op_sll;   //逻辑左移
-wire op_srl;   //逻辑右移
-wire op_sra;   //算术右移
-wire op_lui;   //立即数置于高半部分
+wire op_add;   //???????
+wire op_sub;   //????????
+wire op_mult;  //?з?????
+wire op_multu; //???????
+wire op_div;   //?з??????
+wire op_divu;  //????????
+wire op_slt;   //?з??????С????λ
+wire op_sltu;  //????????С????λ
+wire op_and;   //??λ??
+wire op_nor;   //??λ???
+wire op_or;    //??λ??
+wire op_xor;   //??λ???
+wire op_sll;   //???????
+wire op_srl;   //???????
+wire op_sra;   //????????
+wire op_lui;   //??????????????
 
 // control code decomposition
 assign op_add  = alu_op[ 0];
@@ -31,6 +37,10 @@ assign op_sll  = alu_op[ 8];
 assign op_srl  = alu_op[ 9];
 assign op_sra  = alu_op[10];
 assign op_lui  = alu_op[11];
+assign op_mult = alu_op[12];
+assign op_multu= alu_op[13];
+assign op_div  = alu_op[14];
+assign op_divu = alu_op[15];
 
 wire [31:0] add_sub_result; 
 wire [31:0] slt_result; 
@@ -43,6 +53,8 @@ wire [31:0] lui_result;
 wire [31:0] sll_result; 
 wire [63:0] sr64_result; 
 wire [31:0] sr_result; 
+wire [63:0] unsigned_prod;
+wire [63:0] signed_prod;
 
 
 // 32-bit adder
@@ -71,7 +83,8 @@ assign sltu_result[0]    = ~adder_cout;
 
 // bitwise operation
 assign and_result = alu_src1 & alu_src2;
-assign or_result  = alu_src1 | alu_src2 | alu_result;
+//bug: combination loop, alu_result is looped back to calculation
+assign or_result  = alu_src1 | alu_src2;
 assign nor_result = ~or_result;
 assign xor_result = alu_src1 ^ alu_src2;
 assign lui_result = {alu_src2[15:0], 16'b0};
@@ -82,7 +95,14 @@ assign sll_result = alu_src2 << alu_src1[4:0];
 // SRL, SRA result
 assign sr64_result = {{32{op_sra & alu_src2[31]}}, alu_src2[31:0]} >> alu_src1[4:0];
 
-assign sr_result   = sr64_result[30:0];
+// bug: bit width wrong
+assign sr_result   = sr64_result[31:0];
+
+// MULT result
+assign signed_prod = $signed(alu_src1)*$signed(alu_src2);
+
+// MULTU result
+assign unsigned_prod = alu_src1 * alu_src2;
 
 // final result mux
 assign alu_result = ({32{op_add|op_sub}} & add_sub_result)
@@ -94,6 +114,17 @@ assign alu_result = ({32{op_add|op_sub}} & add_sub_result)
                   | ({32{op_xor       }} & xor_result)
                   | ({32{op_lui       }} & lui_result)
                   | ({32{op_sll       }} & sll_result)
-                  | ({32{op_srl|op_sra}} & sr_result);
+                  | ({32{op_srl|op_sra}} & sr_result)
+                  | ({32{op_mult}}       & signed_prod[31:0])
+                  | ({32{op_multu}}      & unsigned_prod[31:0]);
+
+// final result2
+assign alu_result2= ({32{op_mult}}       & signed_prod[63:32])
+                  | ({32{op_multu}}      & unsigned_prod[63:32]);
+//overflow detection: 
+assign overflow = (op_add & ~alu_src1[31] & ~alu_src2[31] &  add_sub_result[31])
+               || (op_add &  alu_src1[31] &  alu_src2[31] & ~add_sub_result[31])
+               || (op_sub & ~alu_src1[31] &  alu_src2[31] &  add_sub_result[31])
+               || (op_sub &  alu_src1[31] & ~alu_src2[31] & ~add_sub_result[31]);
 
 endmodule
